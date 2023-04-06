@@ -1,0 +1,35 @@
+service: shop-cloudx-cart-service
+
+plugins:
+  - serverless-offline
+
+useDotenv: true
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: us-east-2
+  environment:
+    #postgresql
+    POSTGRESQL_HOST: ${env:POSTGRESQL_HOST}
+    POSTGRESQL_PORT: ${env:POSTGRESQL_PORT}
+    #common
+    DB_NAME: ${self:custom.DB_NAME}
+    USERNAME: ${self:custom.USERNAME}
+    PASSWORD: ${self:custom.PASSWORD}
+
+custom:
+  DB_NAME: shopcloudx
+  USERNAME: master
+  PASSWORD: password
+
+functions:
+  main:
+    handler: dist/main.handler
+    events:
+      - http:
+          method: ANY
+          path: /
+      - http:
+          method: ANY
+          path: '{proxy+}'

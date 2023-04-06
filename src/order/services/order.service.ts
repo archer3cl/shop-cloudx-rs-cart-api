@@ -1,39 +1,56 @@
-import { Injectable } from '@nestjs/common';
-import { v4 } from 'uuid';
-
-import { Order } from '../models';
+import { Inject, Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Address, Order, OrderStatus } from '../order.entity';
+import { Cart, CartStatus } from 'src/cart/cart.entity';
+import { DataSource, Repository } from 'typeorm';
+import { CartService } from 'src/cart';
 
 @Injectable()
 export class OrderService {
-  private orders: Record<string, Order> = {}
+  constructor(
+    @InjectRepository(Order)
+    private ordersRepository: Repository<Order>,
+    private dataSource: DataSource,
+  ) {}
 
-  findById(orderId: string): Order {
-    return this.orders[ orderId ];
+  findByUserId(userId: string, orderId: string) {
+    return this.ordersRepository.findOne({
+      where: { id: orderId, user: { email: userId } },
+      relations: { cart: { items: true } },
+    });
   }
 
-  create(data: any) {
-    const id = v4(v4())
-    const order = {
-      ...data,
-      id,
-      status: 'inProgress',
-    };
-
-    this.orders[ id ] = order;
-
-    return order;
+  findAllByUserId(userId: string) {
+    return this.ordersRepository.find({
+      where: { user: { email: userId } },
+      relations: { cart: { items: true } },
+    });
   }
 
-  update(orderId, data) {
-    const order = this.findById(orderId);
+  async create(address: Address, cart: Cart) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      cart.status = CartStatus.ORDERED;
+      await queryRunner.manager.save(cart);
 
-    if (!order) {
-      throw new Error('Order does not exist.');
-    }
+      const order = new Order();
+      order.address = address;
+      order.cart = cart;
+      order.user = cart.user;
+      order.statusHistory = [
+        { comment: '', status: OrderStatus.OPEN, timestamp: +new Date() },
+      ];
 
-    this.orders[ orderId ] = {
-      ...data,
-      id: orderId,
+      const createdOrder = await queryRunner.manager.save(order);
+      await queryRunner.commitTransaction();
+      return createdOrder;
+    } catch (error) {
+      console.log(error);
+      await queryRunner.rollbackTransaction();
+    } finally {
+      await queryRunner.release();
     }
   }
 }
